@@ -1,10 +1,52 @@
 import sys
 import pandas as pd
 
+def is_warm(row, sensor_cols):
+    """Devuelve True si al menos una columna de sensor tiene datos reales."""
+    for col in sensor_cols:
+        val = row.get(col, "Sin registro")
+        if pd.isna(val):
+            continue
+        str_val = str(val).strip().lower()
+        if str_val not in ("sin registro", "no detectado", "0", "", "nan"):
+            return True
+        # Para columnas numéricas: si es distinto de 0, es dato real
+        try:
+            if float(val) != 0.0:
+                return True
+        except (ValueError, TypeError):
+            pass
+    return False
+
+def find_warmup_end(df):
+    """
+    Encuentra el índice de la primera fila donde el sistema ya encontró
+    palabras leídas > 0 O algún sensor emocional/ocular tiene dato real.
+    Todo lo anterior se considera basura de arranque.
+    """
+    sensor_cols = [
+        "# palabras leidas", "emocion_principal", "confianza",
+        "segunda_emocion", "direccion", "retencion"
+    ]
+    # Filtramos solo las columnas que realmente existen en el df
+    sensor_cols = [c for c in sensor_cols if c in df.columns]
+
+    for i, (_, row) in enumerate(df.iterrows()):
+        palabras = row.get("# palabras leidas", 0)
+        try:
+            if float(palabras) > 0:
+                return i
+        except (ValueError, TypeError):
+            pass
+        if is_warm(row, sensor_cols):
+            return i
+
+    return 0  # Si no encuentra nada, no corta nada
+
 def merge_session_data(unity_path, emotions_path, eyetracking_path, output_path):
     df_unity = pd.read_csv(unity_path)
-    df_emo = pd.read_csv(emotions_path)
-    df_eye = pd.read_csv(eyetracking_path)
+    df_emo   = pd.read_csv(emotions_path)
+    df_eye   = pd.read_csv(eyetracking_path)
 
     df_final = pd.merge(df_unity, df_emo, on="timestamp", how="outer")
     df_final = pd.merge(df_final, df_eye, on="timestamp", how="outer")
@@ -21,8 +63,15 @@ def merge_session_data(unity_path, emotions_path, eyetracking_path, output_path)
     if "contador" in df_final.columns:
         df_final = df_final.drop(columns=["contador"])
 
-    df_final = df_final.sort_values("timestamp")
+    df_final = df_final.sort_values("timestamp").reset_index(drop=True)
     df_final = df_final.fillna("Sin registro")
+
+    # --- Limpieza del período de arranque ---
+    warmup_end = find_warmup_end(df_final)
+    if warmup_end > 0:
+        print(f"[MergeMetrics] Eliminando {warmup_end} fila(s) de arranque (warmup).")
+        df_final = df_final.iloc[warmup_end:].reset_index(drop=True)
+
     df_final.to_csv(output_path, index=False, encoding="utf-8")
     print(f"[MergeMetrics] ¡Éxito! CSV maestro generado en: {output_path}")
 
