@@ -153,6 +153,14 @@ while True:
             
             contador += 1
             print(f"[{contador}] {direccion} | Centro:{centro_acum} Izq:{izquierda_acum} Der:{derecha_acum} Arr:{arriba_acum} Aba:{abajo_acum}")
+            
+            # Resetear contadores acumulativos para el siguiente segundo
+            centro_acum = 0
+            izquierda_acum = 0
+            derecha_acum = 0
+            arriba_acum = 0
+            abajo_acum = 0
+            
             ultimo_guardado = tiempo_actual
         
     except Exception as e:
